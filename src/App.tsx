@@ -469,13 +469,15 @@ export default function App() {
     };
 
     const dataStr = JSON.stringify(backup, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
+    // Changed MIME type to text/plain for easier mobile access
+    const blob = new Blob([dataStr], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     
     // Create temporary link to trigger download
     const link = document.createElement('a');
     link.href = url;
-    link.download = `travel_backup_${new Date().toISOString().slice(0,10)}.json`;
+    // Changed extension to .txt to open in standard text editors/browsers
+    link.download = `travel_backup_${new Date().toISOString().slice(0,10)}.txt`;
     document.body.appendChild(link);
     link.click();
     
@@ -501,9 +503,24 @@ export default function App() {
         }
       }
       
-      // Basic validation
-      if (!backup || !backup.app || backup.app !== 'euro-travel-pocket' || !Array.isArray(backup.events)) {
-        throw new Error("Invalid backup format");
+      // Robust Validation & Normalization
+      if (!backup || typeof backup !== 'object') {
+         throw new Error("Invalid data format: Not an object");
+      }
+
+      // Handle raw array paste (user pasted just the events list)
+      if (Array.isArray(backup)) {
+         backup = { events: backup };
+      }
+
+      // Validate events array
+      if (!Array.isArray(backup.events)) {
+        throw new Error("Invalid backup: 'events' list missing or incorrect.");
+      }
+
+      // (Optional) Check app signature - Log warning instead of failing
+      if (backup.app && backup.app !== 'euro-travel-pocket') {
+         console.warn("Restoring data from potentially different app source.");
       }
 
       setEvents(backup.events);
@@ -512,9 +529,9 @@ export default function App() {
       }
       
       showAlert("Success", "Data successfully restored!");
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      showAlert("Error", "Invalid backup file. Please check the content and try again.");
+      showAlert("Restore Failed", e.message || "Invalid backup file.");
     }
   };
 
