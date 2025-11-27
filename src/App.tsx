@@ -23,7 +23,9 @@ import {
   List,
   Coins,
   Download,
-  Upload
+  Upload,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 // --- Types ---
@@ -376,7 +378,8 @@ export default function App() {
   const [events, setEvents] = useState<TravelEvent[]>([]);
   const [exchangeRates, setExchangeRates] = useState<{ [key: string]: number }>(DEFAULT_RATES);
   const [view, setView] = useState<'itinerary' | 'add' | 'expenses' | 'suggestions'>('itinerary');
-  const [showAllEvents, setShowAllEvents] = useState(false);
+  const [showAllEvents, setShowAllEvents] = useState(true);
+  const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
   
   // Suggestion State
   const [suggestionParams, setSuggestionParams] = useState({ 
@@ -538,40 +541,24 @@ export default function App() {
   const sortedEvents = [...events].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
   const getDisplayEvents = () => {
-    // If showing all, REVERSE the order to show most recent/future first (Descending)
+    // If showing all, show in chronological order (Ascending)
     if (showAllEvents) {
-      return [...sortedEvents].reverse();
+      return sortedEvents;
     }
 
-    // Default "Today" logic remains Ascending (Chronological)
-    if (sortedEvents.length === 0) return sortedEvents;
-
+    // Strict "Today" logic - Ascending (Chronological)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
-    const todaysEvents = sortedEvents.filter(e => {
-      const eDate = new Date(e.startTime);
-      eDate.setHours(0, 0, 0, 0);
-      return eDate.getTime() === today.getTime();
-    });
-
-    if (todaysEvents.length > 0) return todaysEvents;
-
-    const futureEvents = sortedEvents.filter(e => new Date(e.startTime) >= today);
-    if (futureEvents.length === 0) return sortedEvents; 
-
-    const nextEventDate = new Date(futureEvents[0].startTime);
-    nextEventDate.setHours(0, 0, 0, 0);
 
     return sortedEvents.filter(e => {
       const eDate = new Date(e.startTime);
       eDate.setHours(0, 0, 0, 0);
-      return eDate.getTime() === nextEventDate.getTime();
+      return eDate.getTime() === today.getTime();
     });
   };
 
   const displayedEvents = getDisplayEvents();
-  const isFiltered = !showAllEvents && displayedEvents.length !== sortedEvents.length;
+  const isFiltered = !showAllEvents;
 
   const getExpenseSummary = (): ExpenseSummary => {
     let totalHkd = 0;
@@ -862,251 +849,298 @@ export default function App() {
     });
   };
 
+  const toggleDateCollapse = (dateKey: string) => {
+    const newSet = new Set(collapsedDates);
+    if (newSet.has(dateKey)) {
+        newSet.delete(dateKey);
+    } else {
+        newSet.add(dateKey);
+    }
+    setCollapsedDates(newSet);
+  };
+
   // --- Views ---
 
-  const ItineraryView = () => (
-    <div className="pb-32">
-      <div className="pt-12 pb-2 px-5 bg-[#F2F2F7]">
-        <div className="flex justify-between items-end">
-          <div>
-             <h1 className="text-[34px] font-bold tracking-tight text-black leading-tight">Itinerary</h1>
-             {isFiltered && <div className="text-[#007AFF] text-sm font-semibold">Today's Plan</div>}
-          </div>
-          <div className="text-right pb-1">
-             <button 
-               onClick={() => setShowAllEvents(!showAllEvents)}
-               className="text-[13px] font-semibold text-[#007AFF] mb-1 flex items-center gap-1 justify-end"
-             >
-                {showAllEvents ? <Filter className="w-3 h-3" /> : <List className="w-3 h-3" />}
-                {showAllEvents ? 'Show Today' : 'Show All'}
-             </button>
-             <div className="text-[17px] font-bold text-[#8E8E93]">
-               Total <span className="text-[#007AFF]">HK${getExpenseSummary().totalHkd.toFixed(0)}</span>
-             </div>
+  // Converted to Render Functions to prevent unmounting/keyboard focus loss issues
+  const renderItineraryView = () => {
+    // Group events by date for the collapsible logic
+    const groups: { date: string; events: TravelEvent[] }[] = [];
+    displayedEvents.forEach(event => {
+        const dateStr = new Date(event.startTime).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        
+        if (groups.length === 0 || groups[groups.length - 1].date !== dateStr) {
+            groups.push({ date: dateStr, events: [event] });
+        } else {
+            groups[groups.length - 1].events.push(event);
+        }
+    });
+
+    return (
+      <div className="pb-32">
+        <div className="pt-12 pb-2 px-5 bg-[#F2F2F7]">
+          <div className="flex justify-between items-end">
+            <div>
+               <h1 className="text-[34px] font-bold tracking-tight text-black leading-tight">Itinerary</h1>
+               {isFiltered && <div className="text-[#007AFF] text-sm font-semibold">Today's Plan</div>}
+            </div>
+            <div className="text-right pb-1">
+               <button 
+                 onClick={() => setShowAllEvents(!showAllEvents)}
+                 className="text-[13px] font-semibold text-[#007AFF] mb-1 flex items-center gap-1 justify-end"
+               >
+                  {showAllEvents ? <Filter className="w-3 h-3" /> : <List className="w-3 h-3" />}
+                  {showAllEvents ? 'Show Today' : 'Show All'}
+               </button>
+               <div className="text-[17px] font-bold text-[#8E8E93]">
+                 Total <span className="text-[#007AFF]">HK${getExpenseSummary().totalHkd.toFixed(0)}</span>
+               </div>
+            </div>
           </div>
         </div>
-      </div>
-
-      {displayedEvents.length === 0 && (
-        <div className="flex flex-col items-center justify-center h-[50vh] text-[#8E8E93] px-10 text-center">
-          <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm">
-            <Plus className="w-8 h-8 text-[#007AFF]" />
+  
+        {displayedEvents.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-[50vh] text-[#8E8E93] px-10 text-center">
+            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm">
+              <Plus className="w-8 h-8 text-[#007AFF]" />
+            </div>
+            <h3 className="text-lg font-semibold text-black mb-1">
+              {showAllEvents ? "No Events Yet" : "No Plans Today"}
+            </h3>
+            <p className="text-sm">
+              {showAllEvents ? "Tap the + button to start." : "Relax! Or check 'Show All' to see future trips."}
+            </p>
           </div>
-          <h3 className="text-lg font-semibold text-black mb-1">
-            {showAllEvents ? "No Events Yet" : "No Plans Today"}
-          </h3>
-          <p className="text-sm">
-            {showAllEvents ? "Tap the + button to start." : "Relax! Or check 'Show All' to see future trips."}
-          </p>
-        </div>
-      )}
+        )}
+  
+        <div className="space-y-2 px-4">
+          {groups.map((group) => {
+            const isCollapsed = collapsedDates.has(group.date);
+            
+            return (
+              <div key={group.date} className="mb-6">
+                 {/* Collapsible Header */}
+                 <div 
+                    onClick={() => toggleDateCollapse(group.date)}
+                    className="sticky top-0 z-10 pt-4 pb-2 -mx-4 px-8 bg-[#F2F2F7]/95 backdrop-blur-md flex items-center justify-between cursor-pointer active:opacity-70 transition-opacity"
+                 >
+                    <h2 className="text-[13px] font-semibold text-[#8E8E93] uppercase tracking-wide">
+                        {group.date}
+                    </h2>
+                    {isCollapsed ? <ChevronDown className="w-4 h-4 text-[#8E8E93]" /> : <ChevronUp className="w-4 h-4 text-[#8E8E93]" />}
+                 </div>
 
-      <div className="space-y-6 px-4">
-        {displayedEvents.map((event, index) => {
-          const prevEvent = index > 0 ? displayedEvents[index - 1] : null;
-          const dateObj = new Date(event.startTime);
-          const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          let durationStr = timeStr;
-          if (event.endTime) {
-            const endObj = new Date(event.endTime);
-            durationStr = `${timeStr} - ${endObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-          }
-          const dateStr = dateObj.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-          const showDateHeader = index === 0 || new Date(displayedEvents[index-1].startTime).toDateString() !== dateObj.toDateString();
-          const isEnhancing = enhancingEventId === event.id;
+                 {/* Events List (Conditionally Rendered) */}
+                 {!isCollapsed && (
+                    <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+                      {group.events.map((event) => {
+                        // Find global index for prevEvent logic if needed, 
+                        // though simplified routing logic (just current location) is used here.
+                        const dateObj = new Date(event.startTime);
+                        const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        let durationStr = timeStr;
+                        if (event.endTime) {
+                          const endObj = new Date(event.endTime);
+                          durationStr = `${timeStr} - ${endObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                        }
+                        const isEnhancing = enhancingEventId === event.id;
+                        
+                        // Find previous event globally to support "Route from X"
+                        const globalIndex = events.findIndex(e => e.id === event.id); // Simple find, adequate for small lists
+                        // Note: Sorting affects this. We need the sorted list.
+                        const sortedList = sortedEvents; 
+                        const sortedIndex = sortedList.findIndex(e => e.id === event.id);
+                        const prevEvent = sortedIndex > 0 ? sortedList[sortedIndex - 1] : null;
 
-          return (
-            <React.Fragment key={event.id}>
-              {showDateHeader && (
-                <div className="sticky top-0 z-10 pt-4 pb-2 -mx-4 px-8 bg-[#F2F2F7]/95 backdrop-blur-md">
-                   <h2 className="text-[13px] font-semibold text-[#8E8E93] uppercase tracking-wide">{dateStr}</h2>
-                </div>
-              )}
-
-              <div className="relative pl-4">
-                <div className="absolute left-0 top-3 bottom-0 w-[2px] bg-[#E5E5EA] rounded-full"></div>
-                <div className={`absolute left-[-5px] top-3 w-3 h-3 rounded-full border-2 border-[#F2F2F7] z-10 ${
-                   event.type === 'transport' ? 'bg-orange-500' : 
-                   event.type === 'dining' ? 'bg-green-500' : 'bg-[#007AFF]'
-                }`}></div>
-
-                {prevEvent && (
-                  <div className="mb-3">
-                     <button 
-                       onClick={() => {
-                          const origin = prevEvent.location ? `&origin=${encodeURIComponent(prevEvent.location)}` : '';
-                          const dest = `&destination=${encodeURIComponent(event.location)}`;
-                          window.open(`https://www.google.com/maps/dir/?api=1${origin}${dest}&travelmode=transit`, '_blank');
-                       }}
-                       className="flex items-center gap-2 text-[13px] font-medium text-[#007AFF] bg-blue-50/50 px-3 py-1.5 rounded-full w-fit hover:bg-blue-100 transition-colors"
-                     >
-                        <Navigation className="w-3.5 h-3.5" />
-                        <span>Route to here</span>
-                     </button>
-                  </div>
-                )}
-
-                <IOSCard className="mb-2">
-                   {event.imageUrl && (
-                     <div className="h-32 w-full relative">
-                        <img src={event.imageUrl} alt={event.title} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                     </div>
-                   )}
-
-                  <div className="p-4">
-                    <div className="flex justify-between items-start mb-1">
-                      <div className="flex flex-col">
-                        <span className="text-[13px] font-medium text-[#8E8E93]">{durationStr}</span>
-                        <h3 className="text-[17px] font-semibold text-black leading-tight">{event.title}</h3>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        {event.isCashOnly && (
-                          <span className="bg-[#FF3B30]/10 text-[#FF3B30] text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 mt-1">
-                            CASH
-                          </span>
-                        )}
-                        <button 
-                           onClick={() => addToCalendar(event)}
-                           className="text-[#007AFF] bg-blue-50 p-1.5 rounded-full hover:bg-blue-100 active:scale-95 transition-all"
-                           title="Add to Calendar"
-                        >
-                           <Calendar className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {event.location && (
-                      <div className="flex items-center gap-1.5 text-[#8E8E93] text-[13px] mb-3">
-                        <MapPin className="w-3.5 h-3.5" />
-                        <span className="truncate">{event.location}</span>
-                      </div>
-                    )}
-
-                    {(event.mustDos || event.warnings) ? (
-                      <div className="bg-slate-50 rounded-xl p-3 mb-3 border border-slate-100">
-                        {event.mustDos && event.mustDos.length > 0 && (
-                          <div className="mb-2">
-                             <h4 className="flex items-center gap-1 text-[11px] font-bold uppercase text-purple-600 mb-1">
-                               <CheckCircle2 className="w-3 h-3" /> Highlights
-                             </h4>
-                             <ul className="list-disc list-inside text-[13px] text-slate-700 space-y-0.5">
-                               {event.mustDos.map((item, i) => <li key={i}>{item}</li>)}
-                             </ul>
-                          </div>
-                        )}
-                        {event.warnings && event.warnings.length > 0 && (
-                          <div>
-                             <h4 className="flex items-center gap-1 text-[11px] font-bold uppercase text-red-600 mb-1">
-                               <AlertTriangle className="w-3 h-3" /> Watch Out
-                             </h4>
-                             <ul className="list-disc list-inside text-[13px] text-slate-700 space-y-0.5">
-                               {event.warnings.map((item, i) => <li key={i}>{item}</li>)}
-                             </ul>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      event.type === 'activity' && event.location && (
-                        <button 
-                          onClick={() => enhanceEvent(event)}
-                          disabled={isEnhancing}
-                          className="w-full mb-3 flex items-center justify-center gap-2 py-2 rounded-lg text-[13px] font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors border border-purple-100"
-                        >
-                           {isEnhancing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                           Load Photos & Tourist Guide
-                        </button>
-                      )
-                    )}
-
-                    {event.type === 'transport' && (
-                      <div className="bg-[#F2F2F7] rounded-xl p-3 mb-3">
-                         <div className="flex items-center gap-2 mb-2 text-orange-600 font-semibold text-[13px]">
-                            {event.transportMode === 'flight' ? <Plane className="w-4 h-4"/> : 
-                             event.transportMode === 'bus' ? <Bus className="w-4 h-4"/> : 
-                             <Train className="w-4 h-4"/>}
-                            <span>Transport Details</span>
-                         </div>
-                         <div className="grid grid-cols-2 gap-2 mb-2">
-                            {event.seatInfo && (
-                              <div className="bg-white px-2 py-1 rounded-lg text-center shadow-sm">
-                                <div className="text-[10px] text-[#8E8E93] uppercase font-bold">Seat</div>
-                                <div className="text-[13px] font-semibold font-mono">{event.seatInfo}</div>
+                        return (
+                          <div key={event.id} className="relative pl-4">
+                            <div className="absolute left-0 top-3 bottom-0 w-[2px] bg-[#E5E5EA] rounded-full"></div>
+                            <div className={`absolute left-[-5px] top-3 w-3 h-3 rounded-full border-2 border-[#F2F2F7] z-10 ${
+                              event.type === 'transport' ? 'bg-orange-500' : 
+                              event.type === 'dining' ? 'bg-green-500' : 'bg-[#007AFF]'
+                            }`}></div>
+            
+                            {prevEvent && (
+                              <div className="mb-3">
+                                <button 
+                                  onClick={() => {
+                                      const origin = prevEvent.location ? `&origin=${encodeURIComponent(prevEvent.location)}` : '';
+                                      const dest = `&destination=${encodeURIComponent(event.location)}`;
+                                      window.open(`https://www.google.com/maps/dir/?api=1${origin}${dest}&travelmode=transit`, '_blank');
+                                  }}
+                                  className="flex items-center gap-2 text-[13px] font-medium text-[#007AFF] bg-blue-50/50 px-3 py-1.5 rounded-full w-fit hover:bg-blue-100 transition-colors"
+                                >
+                                    <Navigation className="w-3.5 h-3.5" />
+                                    <span>Route to here</span>
+                                </button>
                               </div>
                             )}
-                            {event.platform && (
-                              <div className="bg-white px-2 py-1 rounded-lg text-center shadow-sm">
-                                <div className="text-[10px] text-[#8E8E93] uppercase font-bold">Platform</div>
-                                <div className="text-[13px] font-semibold font-mono">{event.platform}</div>
+            
+                            <IOSCard className="mb-2">
+                              {event.imageUrl && (
+                                <div className="h-32 w-full relative">
+                                    <img src={event.imageUrl} alt={event.title} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                                </div>
+                              )}
+            
+                              <div className="p-4">
+                                <div className="flex justify-between items-start mb-1">
+                                  <div className="flex flex-col">
+                                    <span className="text-[13px] font-medium text-[#8E8E93]">{durationStr}</span>
+                                    <h3 className="text-[17px] font-semibold text-black leading-tight">{event.title}</h3>
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1">
+                                    {event.isCashOnly && (
+                                      <span className="bg-[#FF3B30]/10 text-[#FF3B30] text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 mt-1">
+                                        CASH
+                                      </span>
+                                    )}
+                                    <button 
+                                      onClick={() => addToCalendar(event)}
+                                      className="text-[#007AFF] bg-blue-50 p-1.5 rounded-full hover:bg-blue-100 active:scale-95 transition-all"
+                                      title="Add to Calendar"
+                                    >
+                                      <Calendar className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+            
+                                {event.location && (
+                                  <div className="flex items-center gap-1.5 text-[#8E8E93] text-[13px] mb-3">
+                                    <MapPin className="w-3.5 h-3.5" />
+                                    <span className="truncate">{event.location}</span>
+                                  </div>
+                                )}
+            
+                                {(event.mustDos || event.warnings) ? (
+                                  <div className="bg-slate-50 rounded-xl p-3 mb-3 border border-slate-100">
+                                    {event.mustDos && event.mustDos.length > 0 && (
+                                      <div className="mb-2">
+                                        <h4 className="flex items-center gap-1 text-[11px] font-bold uppercase text-purple-600 mb-1">
+                                          <CheckCircle2 className="w-3 h-3" /> Highlights
+                                        </h4>
+                                        <ul className="list-disc list-inside text-[13px] text-slate-700 space-y-0.5">
+                                          {event.mustDos.map((item, i) => <li key={i}>{item}</li>)}
+                                        </ul>
+                                      </div>
+                                    )}
+                                    {event.warnings && event.warnings.length > 0 && (
+                                      <div>
+                                        <h4 className="flex items-center gap-1 text-[11px] font-bold uppercase text-red-600 mb-1">
+                                          <AlertTriangle className="w-3 h-3" /> Watch Out
+                                        </h4>
+                                        <ul className="list-disc list-inside text-[13px] text-slate-700 space-y-0.5">
+                                          {event.warnings.map((item, i) => <li key={i}>{item}</li>)}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  event.type === 'activity' && event.location && (
+                                    <button 
+                                      onClick={() => enhanceEvent(event)}
+                                      disabled={isEnhancing}
+                                      className="w-full mb-3 flex items-center justify-center gap-2 py-2 rounded-lg text-[13px] font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors border border-purple-100"
+                                    >
+                                      {isEnhancing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                                      Load Photos & Tourist Guide
+                                    </button>
+                                  )
+                                )}
+            
+                                {event.type === 'transport' && (
+                                  <div className="bg-[#F2F2F7] rounded-xl p-3 mb-3">
+                                    <div className="flex items-center gap-2 mb-2 text-orange-600 font-semibold text-[13px]">
+                                        {event.transportMode === 'flight' ? <Plane className="w-4 h-4"/> : 
+                                        event.transportMode === 'bus' ? <Bus className="w-4 h-4"/> : 
+                                        <Train className="w-4 h-4"/>}
+                                        <span>Transport Details</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 mb-2">
+                                        {event.seatInfo && (
+                                          <div className="bg-white px-2 py-1 rounded-lg text-center shadow-sm">
+                                            <div className="text-[10px] text-[#8E8E93] uppercase font-bold">Seat</div>
+                                            <div className="text-[13px] font-semibold font-mono">{event.seatInfo}</div>
+                                          </div>
+                                        )}
+                                        {event.platform && (
+                                          <div className="bg-white px-2 py-1 rounded-lg text-center shadow-sm">
+                                            <div className="text-[10px] text-[#8E8E93] uppercase font-bold">Platform</div>
+                                            <div className="text-[13px] font-semibold font-mono">{event.platform}</div>
+                                          </div>
+                                        )}
+                                    </div>
+                                    {event.ticketFileRef && (
+                                      <div className="flex items-center gap-2 text-[12px] text-orange-700 bg-orange-100/50 px-2 py-1.5 rounded-lg">
+                                          <FileText className="w-3.5 h-3.5" />
+                                          <span className="font-medium truncate">{event.ticketFileRef}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {event.cost > 0 && (
+                                  <div className="flex items-center justify-end gap-1 mb-3 text-[14px] font-medium text-black">
+                                    <span>{event.cost.toFixed(2)}</span>
+                                    <span className="text-[11px] font-bold bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">{event.currency}</span>
+                                  </div>
+                                )}
+            
+                                <div className="flex gap-2 mt-2 pt-2 border-t border-[#F2F2F7]">
+                                  {event.location && (
+                                    <>
+                                      <button onClick={() => window.open(`http://maps.apple.com/?q=${encodeURIComponent(event.location)}`, '_blank')} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[13px] font-medium text-black bg-[#E5E5EA] active:bg-[#D1D1D6]">
+                                        <MapPin className="w-4 h-4" /> Apple
+                                      </button>
+                                      <button onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`, '_blank')} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[13px] font-medium text-[#007AFF] bg-blue-50 active:bg-blue-100">
+                                        <Navigation className="w-4 h-4" /> Google
+                                      </button>
+                                    </>
+                                  )}
+                                  
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditEvent(event);
+                                    }} 
+                                    className="p-2 rounded-lg text-[#007AFF] bg-[#F2F2F7] active:bg-[#E5E5EA]"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+            
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deleteEvent(event.id);
+                                    }} 
+                                    className="p-2 rounded-lg text-[#FF3B30] bg-[#F2F2F7] active:bg-[#E5E5EA]"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                                <div className="flex gap-2 mt-2">
+                                    {event.type !== 'transport' && (
+                                      <button onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=restaurants+near+${encodeURIComponent(event.location)}`, '_blank')} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[12px] font-medium text-[#8E8E93] bg-[#F2F2F7] active:bg-[#E5E5EA]">
+                                        <Utensils className="w-3 h-3" /> Food
+                                      </button>
+                                    )}
+                                </div>
                               </div>
-                            )}
-                         </div>
-                         {event.ticketFileRef && (
-                           <div className="flex items-center gap-2 text-[12px] text-orange-700 bg-orange-100/50 px-2 py-1.5 rounded-lg">
-                              <FileText className="w-3.5 h-3.5" />
-                              <span className="font-medium truncate">{event.ticketFileRef}</span>
-                           </div>
-                         )}
-                      </div>
-                    )}
-                    
-                    {event.cost > 0 && (
-                      <div className="flex items-center justify-end gap-1 mb-3 text-[14px] font-medium text-black">
-                         <span>{event.cost.toFixed(2)}</span>
-                         <span className="text-[11px] font-bold bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">{event.currency}</span>
-                      </div>
-                    )}
-
-                    <div className="flex gap-2 mt-2 pt-2 border-t border-[#F2F2F7]">
-                      {event.location && (
-                        <>
-                          <button onClick={() => window.open(`http://maps.apple.com/?q=${encodeURIComponent(event.location)}`, '_blank')} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[13px] font-medium text-black bg-[#E5E5EA] active:bg-[#D1D1D6]">
-                             <MapPin className="w-4 h-4" /> Apple
-                          </button>
-                          <button onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`, '_blank')} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[13px] font-medium text-[#007AFF] bg-blue-50 active:bg-blue-100">
-                             <Navigation className="w-4 h-4" /> Google
-                          </button>
-                        </>
-                      )}
-                      
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditEvent(event);
-                        }} 
-                        className="p-2 rounded-lg text-[#007AFF] bg-[#F2F2F7] active:bg-[#E5E5EA]"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteEvent(event.id);
-                        }} 
-                        className="p-2 rounded-lg text-[#FF3B30] bg-[#F2F2F7] active:bg-[#E5E5EA]"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                            </IOSCard>
+                          </div>
+                        );
+                      })}
                     </div>
-                     <div className="flex gap-2 mt-2">
-                         {event.type !== 'transport' && (
-                           <button onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=restaurants+near+${encodeURIComponent(event.location)}`, '_blank')} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[12px] font-medium text-[#8E8E93] bg-[#F2F2F7] active:bg-[#E5E5EA]">
-                             <Utensils className="w-3 h-3" /> Food
-                           </button>
-                        )}
-                     </div>
-                  </div>
-                </IOSCard>
+                 )}
               </div>
-            </React.Fragment>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
-  const SuggestionsView = () => (
+  const renderSuggestionsView = () => (
     <div className="pb-32 bg-[#F2F2F7] min-h-screen">
        <div className="pt-12 pb-6 px-5">
          <h1 className="text-[34px] font-bold tracking-tight text-black">Guide</h1>
@@ -1213,7 +1247,7 @@ export default function App() {
     </div>
   );
 
-  const AddEventView = () => (
+  const renderAddEventView = () => (
     <div className="bg-[#F2F2F7] min-h-full pb-32 pt-6">
       <div className="flex items-center justify-between px-4 mb-6">
         <button onClick={() => setView('itinerary')} className="text-[#007AFF] text-[17px]">Cancel</button>
@@ -1361,7 +1395,7 @@ export default function App() {
     </div>
   );
 
-  const ExpensesView = () => {
+  const renderExpensesView = () => {
     const summary = getExpenseSummary();
     const usedCurrencies = Object.keys(summary.details);
 
@@ -1487,10 +1521,10 @@ export default function App() {
 
       {/* Main Content Area */}
       <div className="h-screen overflow-y-auto no-scrollbar">
-        {view === 'itinerary' && <ItineraryView />}
-        {view === 'add' && <AddEventView />}
-        {view === 'expenses' && <ExpensesView />}
-        {view === 'suggestions' && <SuggestionsView />}
+        {view === 'itinerary' && renderItineraryView()}
+        {view === 'add' && renderAddEventView()}
+        {view === 'expenses' && renderExpensesView()}
+        {view === 'suggestions' && renderSuggestionsView()}
       </div>
 
       {/* iOS Tab Bar */}
