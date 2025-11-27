@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Plus, 
   MapPin, 
@@ -7,8 +7,6 @@ import {
   Train, 
   CreditCard, 
   Trash2, 
-  Euro, 
-  Clock, 
   AlertCircle,
   FileText,
   Plane,
@@ -25,8 +23,7 @@ import {
   List,
   Coins,
   Download,
-  Upload,
-  Save
+  Upload
 } from 'lucide-react';
 
 // --- Types ---
@@ -110,7 +107,7 @@ const parseGeminiResponse = (text: string) => {
     let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
     try {
       return JSON.parse(clean);
-    } catch (e) {
+    } catch {
       const match = clean.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
       if (match) {
         return JSON.parse(match[0]);
@@ -124,7 +121,7 @@ const parseGeminiResponse = (text: string) => {
 };
 
 const callGemini = async (prompt: string): Promise<string> => {
-  const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || ""; 
+  const apiKey = ""; 
   try {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
@@ -491,10 +488,21 @@ export default function App() {
 
   const handleRestoreBackup = (jsonString: string) => {
     try {
-      const backup: BackupData = JSON.parse(jsonString);
+      let backup: any;
+      try {
+        backup = JSON.parse(jsonString);
+      } catch (jsonError) {
+        // Fallback for JS Object notation (unquoted keys)
+        try {
+          // eslint-disable-next-line no-new-func
+          backup = new Function(`return ${jsonString}`)();
+        } catch {
+          throw jsonError; // Throw original error if fallback fails
+        }
+      }
       
       // Basic validation
-      if (!backup.app || backup.app !== 'euro-travel-pocket' || !Array.isArray(backup.events)) {
+      if (!backup || !backup.app || backup.app !== 'euro-travel-pocket' || !Array.isArray(backup.events)) {
         throw new Error("Invalid backup format");
       }
 
@@ -513,7 +521,13 @@ export default function App() {
   const sortedEvents = [...events].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
   const getDisplayEvents = () => {
-    if (showAllEvents || sortedEvents.length === 0) return sortedEvents;
+    // If showing all, REVERSE the order to show most recent/future first (Descending)
+    if (showAllEvents) {
+      return [...sortedEvents].reverse();
+    }
+
+    // Default "Today" logic remains Ascending (Chronological)
+    if (sortedEvents.length === 0) return sortedEvents;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -629,6 +643,7 @@ export default function App() {
       }
 
     } catch (e) {
+      console.error(e);
       showAlert("Error", "Could not understand the text. Please try again.");
     }
   };
@@ -1405,7 +1420,7 @@ export default function App() {
           <div className="space-y-1">
              <div className="pl-4 text-[13px] text-[#8E8E93] uppercase mb-1">Transactions</div>
              <div className="bg-white rounded-xl overflow-hidden border border-[#E5E5EA]">
-                {events.filter(e => e.cost > 0).map((e, i) => (
+                {events.filter(e => e.cost > 0).map((e) => (
                   <div key={e.id} className="flex justify-between items-center p-4 border-b border-[#E5E5EA] last:border-0">
                      <div className="flex flex-col">
                         <span className="text-[15px] font-medium text-black">{e.title}</span>
