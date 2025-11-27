@@ -124,7 +124,7 @@ const parseGeminiResponse = (text: string) => {
 };
 
 const callGemini = async (prompt: string): Promise<string> => {
-  const apiKey = ""; 
+  const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || ""; 
   try {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
